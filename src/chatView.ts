@@ -46,8 +46,9 @@ export class ChatView implements vscode.WebviewViewProvider {
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
-    view.webview.options = { enableScripts: true };
-    view.webview.html = this.html();
+    const medien = vscode.Uri.joinPath(this.ctx.extensionUri, "media");
+    view.webview.options = { enableScripts: true, localResourceRoots: [medien] };
+    view.webview.html = this.html(view.webview);
     view.webview.onDidReceiveMessage((m) => this.empfangen(m));
     view.onDidChangeVisibility(() => {
       if (view.visible) this.gelesen();
@@ -133,56 +134,81 @@ export class ChatView implements vscode.WebviewViewProvider {
     }
   }
 
-  private html(): string {
+  private html(webview: vscode.Webview): string {
     const nonce = randomBytes(16).toString("hex");
+    const fonts = webview.asWebviewUri(vscode.Uri.joinPath(this.ctx.extensionUri, "media", "fonts")).toString();
     return /* html */ `<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  body { padding: 0; margin: 0; font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); display: flex; flex-direction: column; height: 100vh; }
-  #kopf { display: flex; align-items: center; gap: 10px; padding: 10px 12px 6px; }
-  #kopf .name { font-weight: 600; }
-  #kopf .status { opacity: .7; font-size: .9em; }
-  #liste { flex: 1; overflow-y: auto; padding: 4px 10px 10px; display: flex; flex-direction: column; gap: 8px; }
-  .msg { padding: 7px 10px; border-radius: 10px; line-height: 1.45; max-width: 92%; word-wrap: break-word; white-space: pre-wrap; }
-  .mentor { background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-editorWidget-border, transparent); align-self: flex-start; border-top-left-radius: 2px; }
-  .ich { background: var(--vscode-button-background); color: var(--vscode-button-foreground); align-self: flex-end; border-top-right-radius: 2px; }
-  .info { align-self: center; opacity: .65; font-size: .85em; text-align: center; }
-  .fehler { align-self: stretch; color: var(--vscode-errorForeground); border: 1px solid var(--vscode-inputValidation-errorBorder, currentColor); font-size: .9em; }
-  .datei { display: block; font-size: .8em; opacity: .6; margin-bottom: 2px; white-space: normal; }
-  code { font-family: var(--vscode-editor-font-family); background: var(--vscode-textCodeBlock-background); padding: 0 3px; border-radius: 3px; }
-  pre { background: var(--vscode-textCodeBlock-background); padding: 6px 8px; border-radius: 6px; overflow-x: auto; margin: 4px 0; white-space: pre; }
-  pre code { background: none; padding: 0; }
-  .block { margin: 6px 0; border: 1px solid var(--vscode-editorWidget-border, transparent); border-radius: 6px; overflow: hidden; white-space: normal; }
-  .block pre { margin: 0; border-radius: 0; }
-  .block .leiste { display: flex; gap: 4px; align-items: center; padding: 3px 6px; background: var(--vscode-editorGroupHeader-tabsBackground, rgba(128,128,128,.12)); font-size: .82em; }
-  .block .leiste .titel { flex: 1; opacity: .75; }
-  .block .leiste button { padding: 2px 7px; font-size: 1em; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
-  .block .leiste button:hover { background: var(--vscode-button-secondaryHoverBackground); }
-  .block .leiste button.haupt { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
-  .block .leiste button.haupt:hover { background: var(--vscode-button-hoverBackground); }
-  .block .leiste button:disabled { opacity: .6; cursor: default; }
-  .vorschlag { border-color: var(--vscode-focusBorder); }
-  .vorschlag pre code { color: var(--vscode-gitDecoration-addedResourceForeground, inherit); }
-  a.zeile { color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: underline dotted; }
-  #leer { opacity: .6; text-align: center; margin-top: 20px; padding: 0 16px; line-height: 1.5; }
-  form { display: flex; gap: 6px; padding: 8px 10px 10px; border-top: 1px solid var(--vscode-panel-border, transparent); }
-  textarea { flex: 1; resize: none; min-height: 34px; max-height: 120px; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: 6px; padding: 6px 8px; }
-  textarea:focus { outline: 1px solid var(--vscode-focusBorder); }
-  button { font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: none; border-radius: 6px; padding: 0 12px; cursor: pointer; }
-  button:hover { background: var(--vscode-button-hoverBackground); }
-  button.klein { padding: 3px 8px; font-size: .85em; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
-  button.klein:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  /* Lyx-UI (siehe LyxUI/lyx-ui.css im Repo): Flieder + Türkis, kantig, Barlow Condensed + IBM Plex Mono */
+  @font-face { font-family: "Barlow C"; src: url(${fonts}/BarlowCondensed-700-latin.woff2) format("woff2"); font-weight: 700; }
+  @font-face { font-family: "Barlow C"; src: url(${fonts}/BarlowCondensed-500-latin.woff2) format("woff2"); font-weight: 500; }
+  @font-face { font-family: "Plex Mono"; src: url(${fonts}/IBMPlexMono-400-latin.woff2) format("woff2"); font-weight: 400; }
+  @font-face { font-family: "Plex Mono"; src: url(${fonts}/IBMPlexMono-600-latin.woff2) format("woff2"); font-weight: 600; }
+  :root { --bg: #141219; --panel: #1c1924; --panel2: #241f2e; --line: #332c40; --txt: #e9e4f0; --dim: #8f8a9c;
+    --acc: #b496ea; --acc-deep: #7d5bc4; --acc2: #3ccbb5; --up: #62d68a; --down: #e2563f; --code: #0f0d14;
+    --f-head: "Barlow C", sans-serif; --f-body: "Plex Mono", ui-monospace, monospace; }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--txt); }
+  body { padding: 0; margin: 0; font: 13px/1.5 var(--f-body); display: flex; flex-direction: column; height: 100vh; }
+  ::selection { background: var(--acc-deep); color: var(--txt); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--line); } ::-webkit-scrollbar-track { background: transparent; }
 
-  /* Eule */
-  #eule { width: 44px; height: 44px; flex: none; }
-  #eule .koerper { fill: #8a6a4a; } #eule .bauch { fill: #d9c3a1; }
-  #eule .auge { fill: #fff; } #eule .pupille { fill: #222; transition: transform .3s; }
-  #eule .lid { fill: #8a6a4a; transform-origin: center; transform: scaleY(0); transition: transform .25s; }
-  #eule .schnabel { fill: #f0a830; }
+  #kopf { display: flex; align-items: center; gap: 10px; padding: 12px 12px 10px; border-bottom: 1px solid var(--line); }
+  #kopf .name { font: 700 22px/1 var(--f-head); text-transform: uppercase; letter-spacing: .04em; }
+  #kopf .status { white-space: nowrap; font-size: 11px; color: var(--dim); letter-spacing: .04em; margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+  .led { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--line); flex: none; }
+  body[data-s="wach"] .led { background: var(--up); }
+  body[data-s="denkt"] .led { background: var(--acc); animation: puls 1s ease-in-out infinite; }
+  body[data-s="schlaeft"] .led { background: var(--dim); }
+  @keyframes puls { 50% { opacity: .3; } }
+
+  #liste { flex: 1; overflow-y: auto; padding: 12px 10px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { padding: 8px 10px; max-width: 94%; word-wrap: break-word; white-space: pre-wrap; border: 1px solid var(--line); }
+  .mentor { background: var(--panel); border-left: 2px solid var(--acc); align-self: flex-start; }
+  .ich { background: var(--panel2); border-right: 2px solid var(--acc2); align-self: flex-end; }
+  .info { align-self: center; border: none; padding: 0 6px; color: var(--dim); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; text-align: center; }
+  .fehler { align-self: stretch; color: var(--down); border-color: var(--down); background: rgba(226, 86, 63, .07); font-size: 12px; }
+  .datei { display: table; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--line); padding: 0 5px; margin-bottom: 6px; white-space: normal; }
+  b { font-weight: 600; color: var(--acc); }
+  code { font-family: var(--f-body); background: var(--code); border: 1px solid var(--line); padding: 0 4px; font-size: 12px; }
+  pre { background: var(--code); padding: 8px 10px; overflow-x: auto; margin: 6px 0; white-space: pre; border: 1px solid var(--line); }
+  pre code { background: none; border: none; padding: 0; }
+  .block { margin: 8px 0; border: 1px solid var(--line); overflow: hidden; white-space: normal; }
+  .block pre { margin: 0; border: none; }
+  .block .leiste { display: flex; gap: 4px; align-items: center; padding: 4px 6px 4px 10px; background: var(--panel2); border-bottom: 1px solid var(--line); }
+  .block .leiste .titel { flex: 1; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+  .block .leiste button { padding: 2px 8px; font-size: 11px; }
+  .vorschlag { border-color: var(--acc-deep); }
+  .vorschlag .leiste { background: rgba(125, 91, 196, .18); }
+  .vorschlag .leiste .titel { color: var(--acc); }
+  .vorschlag pre code { color: var(--up); }
+  a.zeile { color: var(--acc2); cursor: pointer; text-decoration: none; border-bottom: 1px dotted var(--acc2); }
+  a.zeile:hover { border-bottom-style: solid; }
+  #leer { color: var(--dim); text-align: center; margin-top: 24px; padding: 0 16px; line-height: 1.6; font-size: 12px; }
+
+  form { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); background: var(--panel); }
+  textarea { flex: 1; resize: none; min-height: 36px; max-height: 120px; font: 13px var(--f-body); color: var(--txt); background: var(--bg); border: 1px solid var(--line); border-radius: 0; padding: 8px 10px; outline: 0; }
+  textarea:focus { border-color: var(--acc2); }
+  textarea::placeholder { color: var(--dim); }
+  button { font: 600 12px var(--f-body); color: var(--txt); background: var(--panel); border: 1px solid var(--line); border-radius: 0; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--acc); }
+  button.haupt, form button { background: var(--acc); color: #141219; border-color: var(--acc); }
+  button.haupt:hover, form button:hover { background: var(--acc-deep); border-color: var(--acc-deep); color: var(--txt); }
+  button:disabled, button.haupt:disabled { opacity: .45; cursor: default; background: var(--panel); color: var(--up); border-color: var(--line); }
+  button.klein { padding: 4px 8px; font-size: 11px; }
+  form button { padding: 0 14px; font-size: 14px; }
+
+  /* Eule in Lyx-Farben */
+  #eule { width: 42px; height: 42px; flex: none; }
+  #eule .koerper { fill: var(--acc-deep); } #eule .bauch { fill: var(--acc); }
+  #eule .auge { fill: var(--txt); } #eule .pupille { fill: var(--bg); transition: transform .3s; }
+  #eule .lid { fill: var(--acc-deep); transform-origin: center; transform: scaleY(0); transition: transform .25s; }
+  #eule .schnabel { fill: var(--acc2); }
   #eule.denkt .pupillen { animation: umschauen 1.6s ease-in-out infinite; }
   #eule.schlaeft .lid { transform: scaleY(1); }
   #eule.spricht { animation: hopsen .5s ease-out 2; }
@@ -192,7 +218,7 @@ export class ChatView implements vscode.WebviewViewProvider {
   @keyframes hopsen { 0%,100% { transform: translateY(0); } 40% { transform: translateY(-5px); } }
 </style>
 </head>
-<body>
+<body data-s="wach">
   <div id="kopf">
     <svg id="eule" class="wach" viewBox="0 0 48 48" aria-hidden="true">
       <path class="koerper" d="M10 10 L16 15 L32 15 L38 10 L38 34 C38 42 31 46 24 46 C17 46 10 42 10 34 Z"/>
@@ -202,7 +228,7 @@ export class ChatView implements vscode.WebviewViewProvider {
       <rect class="lid" x="11.5" y="15.5" width="13" height="13" rx="6.5"/><rect class="lid" x="23.5" y="15.5" width="13" height="13" rx="6.5"/>
       <path class="schnabel" d="M21.5 27 L26.5 27 L24 31 Z"/>
     </svg>
-    <div style="flex:1"><div class="name">Eule</div><div class="status" id="status">schaut zu</div></div>
+    <div style="flex:1"><div class="name">Eule</div><div class="status"><span class="led"></span><span id="status">schaut zu</span></div></div>
     <button class="klein" id="modus" title="Live-Mitlesen oder nur auf Frage helfen">⇄ Modus</button>
     <button class="klein" id="uebung" title="Neue Übungsdatei zum Rumspielen">🎯 Übung</button>
   </div>
@@ -218,7 +244,7 @@ export class ChatView implements vscode.WebviewViewProvider {
   const eule = document.getElementById('eule');
   const status = document.getElementById('status');
   const eingabe = document.getElementById('eingabe');
-  const STATUS = { wach: 'live – schaut dir zu', denkt: 'denkt nach …', schlaeft: 'hilft nur auf Frage' };
+  const STATUS = { wach: 'live', denkt: 'denkt nach …', schlaeft: 'nur auf Frage' };
 
   function esc(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]); }
   function zeilenLinks(html, datei) {
@@ -283,6 +309,7 @@ export class ChatView implements vscode.WebviewViewProvider {
     eule.classList.remove('wach', 'denkt', 'schlaeft');
     eule.classList.add(s);
     status.textContent = STATUS[s] || '';
+    document.body.dataset.s = s;
   }
   liste.addEventListener('click', e => {
     const k = e.target.closest('button[data-aktion]');

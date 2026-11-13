@@ -1,0 +1,184 @@
+{
+  "name": "schulterblick",
+  "displayName": "Schulterblick – Claude als Coding-Mentor",
+  "description": "Claude schaut dir beim Programmieren (Java, C, C++) über die Schulter und gibt in Tipp-Pausen Lern-Hinweise im Chat.",
+  "version": "0.1.0",
+  "publisher": "ththema-bit",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Education",
+    "Linters"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:java",
+    "onLanguage:c",
+    "onLanguage:cpp",
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "schulterblick",
+          "title": "Schulterblick",
+          "icon": "media/eule.svg"
+        }
+      ]
+    },
+    "views": {
+      "schulterblick": [
+        {
+          "type": "webview",
+          "id": "schulterblick.chat",
+          "name": "Mentor"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "schulterblick.neueUebung",
+        "title": "Schulterblick: Neue Übung",
+        "icon": "$(mortar-board)"
+      },
+      {
+        "command": "schulterblick.jetztPruefen",
+        "title": "Schulterblick: Jetzt drüberschauen",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "schulterblick.modusUmschalten",
+        "title": "Schulterblick: Live / Nur auf Frage umschalten",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "schulterblick.neueSitzung",
+        "title": "Schulterblick: Neue Sitzung (Kontext vergessen)",
+        "icon": "$(clear-all)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "schulterblick.neueUebung",
+          "when": "view == schulterblick.chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "schulterblick.jetztPruefen",
+          "when": "view == schulterblick.chat",
+          "group": "navigation@2"
+        },
+        {
+          "command": "schulterblick.modusUmschalten",
+          "when": "view == schulterblick.chat",
+          "group": "navigation@3"
+        },
+        {
+          "command": "schulterblick.neueSitzung",
+          "when": "view == schulterblick.chat",
+          "group": "navigation@4"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Schulterblick",
+      "properties": {
+        "schulterblick.modus": {
+          "type": "string",
+          "enum": [
+            "live",
+            "aufFrage"
+          ],
+          "default": "live",
+          "enumDescriptions": [
+            "Der Mentor schaut in Tipp-Pausen von selbst drüber.",
+            "Der Mentor meldet sich nur, wenn du im Chat fragst oder „Jetzt drüberschauen“ klickst."
+          ],
+          "description": "Live-Mitlesen oder nur auf Frage helfen. Umschalten auch per Klick auf „Eule“ in der Statusleiste."
+        },
+        "schulterblick.uebungsOrdner": {
+          "type": "string",
+          "default": "",
+          "description": "Ordner für Übungsdateien. Leer = Unterordner „schulterblick-uebungen“ im geöffneten Projekt (ohne Projekt: im Speicher der Erweiterung)."
+        },
+        "schulterblick.pauseSekunden": {
+          "type": "number",
+          "default": 8,
+          "minimum": 2,
+          "description": "So viele Sekunden ohne Tippen, dann schaut der Mentor auf deine Änderungen."
+        },
+        "schulterblick.minZeichen": {
+          "type": "number",
+          "default": 40,
+          "minimum": 1,
+          "description": "Mindestmenge an geänderten Zeichen seit dem letzten Blick, damit der Mentor überhaupt aktiv wird."
+        },
+        "schulterblick.gespraechigkeit": {
+          "type": "string",
+          "enum": [
+            "ruhig",
+            "normal",
+            "gespraechig"
+          ],
+          "default": "normal",
+          "enumDescriptions": [
+            "Meldet sich nur bei echten Fehlern.",
+            "Fehler plus gelegentlich ein Tipp oder Lob.",
+            "Kommentiert öfter, erklärt auch Stil und Hintergründe."
+          ],
+          "description": "Wie oft der Mentor sich von selbst meldet."
+        },
+        "schulterblick.ueberMich": {
+          "type": "string",
+          "default": "",
+          "description": "Ein Satz über dich, z. B. „Ich lerne seit 2 Monaten Java für die Ausbildung“. Der Mentor passt seine Hinweise daran an."
+        },
+        "schulterblick.sprachen": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "java",
+            "c",
+            "cpp"
+          ],
+          "description": "VS-Code-Sprach-IDs, bei denen der Mentor mitliest."
+        },
+        "schulterblick.modell": {
+          "type": "string",
+          "default": "sonnet",
+          "description": "Claude-Modell für den Mentor (z. B. sonnet, haiku, opus). Haiku ist am sparsamsten, Sonnet ein guter Mittelweg."
+        },
+        "schulterblick.claudePfad": {
+          "type": "string",
+          "default": "claude",
+          "description": "Befehl bzw. Pfad zur Claude-Code-CLI."
+        },
+        "schulterblick.benachrichtigen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Kleine Benachrichtigung zeigen, wenn der Mentor etwas sagt und das Chat-Fenster gerade nicht offen ist."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "tsc -p . && node dist/test.js",
+    "package": "tsc -p . && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "~1.90.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { randomBytes } from "crypto";
+import type { Vorschlag } from "./prompts";
 
 export type Rolle = "mentor" | "ich" | "info" | "fehler";
 export type Stimmung = "wach" | "denkt" | "schlaeft";
@@ -10,7 +11,17 @@ export interface ChatNachricht {
   /** URI der Datei, auf die sich "Zeile N" bezieht */
   datei?: string;
   dateiName?: string;
+  /** Änderungsvorschläge zum Übernehmen in die Datei */
+  vorschlaege?: Vorschlag[];
+  /** Indizes der schon übernommenen Vorschläge */
+  uebernommen?: number[];
   zeit: number;
+}
+
+export interface ChatAktionen {
+  frage(text: string): void;
+  einfuegen(code: string): void;
+  uebernehmen(n: ChatNachricht, index: number): Promise<boolean>;
 }
 
 const MAX_VERLAUF = 150;
@@ -24,7 +35,7 @@ export class ChatView implements vscode.WebviewViewProvider {
 
   constructor(
     private ctx: vscode.ExtensionContext,
-    private onFrage: (text: string) => void,
+    private aktionen: ChatAktionen,
   ) {
     this.verlauf = ctx.workspaceState.get<ChatNachricht[]>("verlauf", []);
   }
@@ -56,6 +67,11 @@ export class ChatView implements vscode.WebviewViewProvider {
     }
   }
 
+  /** Letzte Nachricht mit Vorschlägen (für den Integrationstest). */
+  letzteMitVorschlag(): ChatNachricht | undefined {
+    return [...this.verlauf].reverse().find((n) => n.vorschlaege?.length);
+  }
+
   setzeStimmung(s: Stimmung): void {
     this.stimmung = s;
     this.view?.webview.postMessage({ typ: "stimmung", stimmung: s });
@@ -83,14 +99,27 @@ export class ChatView implements vscode.WebviewViewProvider {
       : undefined;
   }
 
-  private async empfangen(m: { typ: string; text?: string; datei?: string; zeile?: number; befehl?: string }) {
+  private async empfangen(m: { typ: string; text?: string; datei?: string; zeile?: number; befehl?: string; zeit?: number; index?: number }) {
     if (m.typ === "bereit") {
       this.view?.webview.postMessage({ typ: "alles", verlauf: this.verlauf, stimmung: this.stimmung });
       this.gelesen();
     } else if (m.typ === "befehl" && m.befehl?.startsWith("schulterblick.")) {
       void vscode.commands.executeCommand(m.befehl);
     } else if (m.typ === "frage" && m.text?.trim()) {
-      this.onFrage(m.text.trim());
+      this.aktionen.frage(m.text.trim());
+    } else if (m.typ === "einfuegen" && m.text) {
+      this.aktionen.einfuegen(m.text);
+    } else if (m.typ === "kopieren" && m.text) {
+      await vscode.env.clipboard.writeText(m.text);
+      void vscode.window.setStatusBarMessage("$(check) Code kopiert", 2000);
+    } else if (m.typ === "uebernehmen" && m.zeit !== undefined && m.index !== undefined) {
+      const n = this.verlauf.find((x) => x.zeit === m.zeit);
+      if (!n?.vorschlaege?.[m.index]) return;
+      if (await this.aktionen.uebernehmen(n, m.index)) {
+        n.uebernommen = [...(n.uebernommen ?? []), m.index];
+        void this.ctx.workspaceState.update("verlauf", this.verlauf);
+        this.view?.webview.postMessage({ typ: "uebernommen", zeit: n.zeit, index: m.index });
+      }
     } else if (m.typ === "springe" && m.zeile) {
       const uri = m.datei ? vscode.Uri.parse(m.datei) : vscode.window.activeTextEditor?.document.uri;
       if (!uri) return;
@@ -127,6 +156,17 @@ export class ChatView implements vscode.WebviewViewProvider {
   code { font-family: var(--vscode-editor-font-family); background: var(--vscode-textCodeBlock-background); padding: 0 3px; border-radius: 3px; }
   pre { background: var(--vscode-textCodeBlock-background); padding: 6px 8px; border-radius: 6px; overflow-x: auto; margin: 4px 0; white-space: pre; }
   pre code { background: none; padding: 0; }
+  .block { margin: 6px 0; border: 1px solid var(--vscode-editorWidget-border, transparent); border-radius: 6px; overflow: hidden; white-space: normal; }
+  .block pre { margin: 0; border-radius: 0; }
+  .block .leiste { display: flex; gap: 4px; align-items: center; padding: 3px 6px; background: var(--vscode-editorGroupHeader-tabsBackground, rgba(128,128,128,.12)); font-size: .82em; }
+  .block .leiste .titel { flex: 1; opacity: .75; }
+  .block .leiste button { padding: 2px 7px; font-size: 1em; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+  .block .leiste button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  .block .leiste button.haupt { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+  .block .leiste button.haupt:hover { background: var(--vscode-button-hoverBackground); }
+  .block .leiste button:disabled { opacity: .6; cursor: default; }
+  .vorschlag { border-color: var(--vscode-focusBorder); }
+  .vorschlag pre code { color: var(--vscode-gitDecoration-addedResourceForeground, inherit); }
   a.zeile { color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: underline dotted; }
   #leer { opacity: .6; text-align: center; margin-top: 20px; padding: 0 16px; line-height: 1.5; }
   form { display: flex; gap: 6px; padding: 8px 10px 10px; border-top: 1px solid var(--vscode-panel-border, transparent); }
@@ -186,14 +226,45 @@ export class ChatView implements vscode.WebviewViewProvider {
     return html.replace(/(Zeilen?\\s+)(\\d+(?:\\s*(?:[-–,]|und|bis)\\s*\\d+)*)/g, (m, wort, zahlen) =>
       wort + zahlen.replace(/\\d+/g, n => '<a class="zeile" data-zeile="' + n + '" data-datei="' + esc(datei || '') + '">' + n + '</a>'));
   }
-  function md(text, datei) {
+  const codes = [];
+  function codeBlock(code, titel, knoepfe, klasse) {
+    codes.push(code);
+    const id = codes.length - 1;
+    return '<div class="block ' + (klasse || '') + '"><div class="leiste"><span class="titel">' + titel + '</span>' +
+      knoepfe.map(k => '<button data-aktion="' + k[0] + '" data-code="' + id + '"' + (k[2] || '') + '>' + k[1] + '</button>').join('') +
+      '</div><pre><code>' + esc(code) + '</code></pre></div>';
+  }
+  function vorschlagBlock(n, i) {
+    const v = (n.vorschlaege || [])[i];
+    if (!v) return '';
+    const fertig = (n.uebernommen || []).includes(i);
+    const titel = v.art === 'ersetzen'
+      ? 'Ersetzt Zeile' + (v.bis > v.von ? 'n ' + v.von + '–' + v.bis : ' ' + v.von)
+      : (v.von === 0 ? 'Einfügen am Anfang' : 'Einfügen nach Zeile ' + v.von);
+    codes.push(v.neu);
+    const id = codes.length - 1;
+    return '<div class="block vorschlag"><div class="leiste"><span class="titel">' + esc((v.datei ? v.datei + ': ' : '') + titel) + '</span>' +
+      '<button class="haupt" data-aktion="uebernehmen" data-zeit="' + n.zeit + '" data-index="' + i + '"' + (fertig ? ' disabled' : '') + '>' + (fertig ? '✔ übernommen' : '✔ Übernehmen') + '</button>' +
+      '<button data-aktion="kopieren" data-code="' + id + '">⧉</button>' +
+      '</div><pre><code>' + esc(v.neu) + '</code></pre></div>';
+  }
+  function md(text, datei, n) {
     const bloecke = [];
-    let s = text.replace(/\`\`\`[\\w+#-]*\\n?([\\s\\S]*?)\`\`\`/g, (m, code) => { bloecke.push(code.replace(/\\n$/, '')); return '\\u0000' + (bloecke.length - 1) + '\\u0000'; });
+    let s = text.replace(/\`\`\`([\\w+#-]*)\\n?([\\s\\S]*?)\`\`\`/g, (m, info, code) => {
+      const v = /^vorschlag-(\\d+)$/.exec(info);
+      bloecke.push(v ? { vorschlag: +v[1] } : { code: code.replace(/\\n$/, '') });
+      return '\\u0000' + (bloecke.length - 1) + '\\u0000';
+    });
     s = esc(s)
       .replace(/\`([^\`\\n]+)\`/g, '<code>$1</code>')
       .replace(/\\*\\*([^*\\n]+)\\*\\*/g, '<b>$1</b>');
     s = zeilenLinks(s, datei);
-    s = s.replace(/\\u0000(\\d+)\\u0000\\n?/g, (m, i) => '<pre><code>' + esc(bloecke[+i]) + '</code></pre>');
+    s = s.replace(/\\n*\\u0000(\\d+)\\u0000\\n*/g, (m, i) => {
+      const b = bloecke[+i];
+      if (b.vorschlag !== undefined) return n ? vorschlagBlock(n, b.vorschlag) : '';
+      if (!n || n.rolle !== 'mentor') return '<pre><code>' + esc(b.code) + '</code></pre>';
+      return codeBlock(b.code, 'Code', [['einfuegen', '⤵ Einfügen', ' title="An der Cursor-Position im Editor einfügen"'], ['kopieren', '⧉ Kopieren']]);
+    });
     return s;
   }
   function anzeigen(n, animiert) {
@@ -202,7 +273,7 @@ export class ChatView implements vscode.WebviewViewProvider {
     d.className = 'msg ' + n.rolle;
     let html = '';
     if (n.rolle === 'mentor' && n.dateiName) html += '<span class="datei">' + esc(n.dateiName) + '</span>';
-    html += (n.rolle === 'mentor' || n.rolle === 'ich') ? md(n.text, n.datei) : esc(n.text);
+    html += (n.rolle === 'mentor' || n.rolle === 'ich') ? md(n.text, n.datei, n) : esc(n.text);
     d.innerHTML = html;
     liste.appendChild(d);
     liste.scrollTop = liste.scrollHeight;
@@ -214,6 +285,13 @@ export class ChatView implements vscode.WebviewViewProvider {
     status.textContent = STATUS[s] || '';
   }
   liste.addEventListener('click', e => {
+    const k = e.target.closest('button[data-aktion]');
+    if (k) {
+      const akt = k.dataset.aktion;
+      if (akt === 'uebernehmen') { k.disabled = true; k.textContent = '…'; vscode.postMessage({ typ: 'uebernehmen', zeit: +k.dataset.zeit, index: +k.dataset.index }); setTimeout(() => { if (k.textContent === '…') { k.disabled = false; k.textContent = '✔ Übernehmen'; } }, 3000); }
+      else vscode.postMessage({ typ: akt, text: codes[+k.dataset.code] });
+      return;
+    }
     const a = e.target.closest('a.zeile');
     if (a) vscode.postMessage({ typ: 'springe', zeile: +a.dataset.zeile, datei: a.dataset.datei || undefined });
   });
@@ -233,6 +311,10 @@ export class ChatView implements vscode.WebviewViewProvider {
     const m = ev.data;
     if (m.typ === 'nachricht') anzeigen(m.nachricht, true);
     else if (m.typ === 'stimmung') stimmung(m.stimmung);
+    else if (m.typ === 'uebernommen') {
+      const k = liste.querySelector('button[data-aktion="uebernehmen"][data-zeit="' + m.zeit + '"][data-index="' + m.index + '"]');
+      if (k) { k.disabled = true; k.textContent = '✔ übernommen'; }
+    }
     else if (m.typ === 'alles') {
       liste.querySelectorAll('.msg').forEach(x => x.remove());
       leer.style.display = m.verlauf.length ? 'none' : '';

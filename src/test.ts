@@ -6,7 +6,7 @@ import * as os from "os";
 import * as path from "path";
 import { randomUUID } from "crypto";
 import { zeilenDiff, mitZeilennummern } from "./diff";
-import { STILL, aenderungsNachricht, systemPrompt, uebungenAuslesen } from "./prompts";
+import { STILL, aenderungsNachricht, altZeilen, stelleFinden, systemPrompt, uebungenAuslesen, vorschlaegeAuslesen } from "./prompts";
 import { Mentor } from "./mentor";
 
 let ok = 0;
@@ -68,6 +68,35 @@ test("Übung mit bösem Dateinamen wird ignoriert", () => {
   assert.strictEqual(u2[0].datei, "Test.java");
 });
 
+test("Vorschläge werden ausgelesen", () => {
+  const antwort = "Probier das:\n<<<ERSETZE Zeile 5\n    for (int i = 0; i < z.length; i++) s += z[i];\nERSETZE>>>\nUnd dann:\n<<<EINFUEGEN Summe.java nach Zeile 6\n    System.out.println(\"fertig\");\nEINFUEGEN>>>\nFertig.";
+  const { rest, vorschlaege } = vorschlaegeAuslesen(antwort);
+  assert.strictEqual(vorschlaege.length, 2);
+  assert.deepStrictEqual([vorschlaege[0].art, vorschlaege[0].von, vorschlaege[0].bis, vorschlaege[0].datei], ["ersetzen", 5, 5, undefined]);
+  assert.deepStrictEqual([vorschlaege[1].art, vorschlaege[1].von, vorschlaege[1].datei], ["einfuegen", 6, "Summe.java"]);
+  assert.ok(vorschlaege[0].neu.startsWith("    for"));
+  assert.strictEqual(rest, "Probier das:\n\n```vorschlag-0\n```\n\nUnd dann:\n\n```vorschlag-1\n```\n\nFertig.");
+  assert.strictEqual(vorschlaegeAuslesen("<<<ERSETZE Zeile 4-2\nx\nERSETZE>>>").vorschlaege.length, 0);
+  assert.strictEqual(vorschlaegeAuslesen("<<<ERSETZE Zeilen 2–4\nx\nERSETZE>>>").vorschlaege[0].bis, 4);
+});
+
+test("Stelle wird auch nach Verrutschen gefunden", () => {
+  const gesehen = "a\nb\nfor (i <= n)\nc\nd";
+  const v = vorschlaegeAuslesen("<<<ERSETZE Zeile 3\nfor (i < n)\nERSETZE>>>").vorschlaege[0];
+  v.alt = altZeilen(gesehen, v);
+  assert.deepStrictEqual(stelleFinden(gesehen.split("\n"), v), { start: 2, ende: 3 });
+  // Person hat oben zwei Zeilen eingefügt
+  assert.deepStrictEqual(stelleFinden(("x\ny\n" + gesehen).split("\n"), v), { start: 4, ende: 5 });
+  // Zeile inzwischen selbst geändert -> nicht mehr eindeutig
+  assert.strictEqual(stelleFinden("a\nb\nfor (i < n)\nc".split("\n"), v), null);
+  // Einfügen nach Zeile 4 ("c"), mit Kontext-Anker
+  const e = vorschlaegeAuslesen("<<<EINFUEGEN nach Zeile 4\nneu\nEINFUEGEN>>>").vorschlaege[0];
+  e.alt = altZeilen(gesehen, e);
+  assert.deepStrictEqual(stelleFinden(("x\n" + gesehen).split("\n"), e), { start: 5, ende: 5 });
+  const anf = vorschlaegeAuslesen("<<<EINFUEGEN nach Zeile 0\nimport x;\nEINFUEGEN>>>").vorschlaege[0];
+  assert.deepStrictEqual(stelleFinden(["a"], anf), { start: 0, ende: 0 });
+});
+
 test("Prompts bauen", () => {
   assert.ok(systemPrompt("ruhig", "Ich lerne Java").includes("Ich lerne Java"));
   const n = aenderungsNachricht({ datei: "A.java", sprache: "java", zeilen: 6, ganzeDatei: false, inhalt: "x", meldungen: ["- Zeile 3: Fehler: ;"] });
@@ -91,6 +120,18 @@ async function live() {
   const a2 = await mentor.fragen("[FRAGE] In welcher Datei war ich gerade? Nur der Dateiname.");
   console.log("\n  Kontext-Test: " + a2);
   assert.match(a2, /Summe\.java/);
+
+  const a25 = await mentor.fragen("[FRAGE] ich komm nicht drauf, korrigier mir den fehler bitte direkt in der datei");
+  const { vorschlaege, rest: r25 } = vorschlaegeAuslesen(a25);
+  console.log("\n  Vorschlag: " + JSON.stringify(vorschlaege) + "\n  Text: " + r25.replace(/\n/g, " "));
+  assert.strictEqual(vorschlaege.length, 1, "kein Vorschlag:\n" + a25);
+  vorschlaege[0].alt = altZeilen(code, vorschlaege[0]);
+  const st = stelleFinden(code.split("\n"), vorschlaege[0]);
+  assert.ok(st, "Stelle nicht gefunden");
+  const z = code.split("\n");
+  z.splice(st!.start, st!.ende - st!.start, ...vorschlaege[0].neu.split("\n"));
+  console.log("  Ergebnis:\n" + z.join("\n").replace(/^/gm, "    | "));
+  assert.ok(z.join("\n").includes("i < z.length"), "Fix falsch");
 
   const a3 = await mentor.fragen("[FRAGE] gib mir ne übung zu arrays sortieren in java");
   const { uebungen, rest } = uebungenAuslesen(a3);

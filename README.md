@@ -9,6 +9,8 @@ Die Eule verrät keine fertigen Lösungen. Sie zeigt auf die Stelle, stellt eine
 - **Nur auf Frage:** Sie meldet sich nur, wenn du im Chat fragst. Umschalten per Klick auf **„Eule“** in der Statusleiste oder **⇄ Modus** im Chat.
 - **Chat in der Seitenleiste** (Eulen-Symbol): Fragen stellen, Erklärungen holen. Die aktuelle Datei wird automatisch mitgeschickt. „Zeile 12“ in Antworten ist anklickbar.
 - **Übungen:** „Gib mir ne Übung zu Arrays sortieren“ (oder Knopf **🎯 Übung**). Die Eule schreibt eine kurze, sofort lauffähige Übungsdatei mit TODOs. Die Datei wird im Ordner `schulterblick-uebungen/` deines Projekts angelegt und geöffnet. Startbefehl steht oben drin, z. B. `java ArraySortieren.java` im Terminal.
+- **Code direkt in den Editor:** Jeder Code-Block im Chat hat **⤵ Einfügen** (an deiner Cursor-Position, Einrückung wird angepasst) und **⧉ Kopieren**.
+- **Änderungsvorschläge übernehmen:** Bittest du um die Lösung („korrigier das“, „schreib das rein“), schlägt die Eule eine Änderung für bestimmte Zeilen vor. **✔ Übernehmen** schreibt sie an die richtige Stelle, auch wenn du inzwischen weitergetippt hast und die Zeilen verrutscht sind. Die neuen Zeilen leuchten kurz auf, Strg+Z macht es rückgängig. Ungefragt macht die Eule das nicht, du sollst ja selbst lernen.
 - Compiler-Fehler und Warnungen, die VS Code schon kennt, gehen mit an Claude.
 
 ## Voraussetzungen

@@ -43,7 +43,23 @@ Regeln für die Übungsdatei:
 - Die Datei muss sofort kompilieren und laufen: ein kleines lauffähiges Beispiel als Spielwiese (Testdaten, Ausgabe), dazu 2–4 nummerierte Aufgaben als \`// TODO 1: …\`, die die Person selbst löst. Die TODOs NICHT schon lösen. Von leicht nach etwas schwerer.
 - Kurz halten (meist unter 50 Zeilen). Pro Antwort höchstens eine Übung.
 - Außerhalb des Blocks schreibst du nur 1–2 Sätze dazu (z. B. womit man anfangen sollte).
-- Danach siehst du die Datei wie jede andere über [ÄNDERUNG]-Nachrichten und hilfst beim Lösen. Ist eine Aufgabe gelöst, lob kurz und weise auf die nächste hin.`;
+- Danach siehst du die Datei wie jede andere über [ÄNDERUNG]-Nachrichten und hilfst beim Lösen. Ist eine Aufgabe gelöst, lob kurz und weise auf die nächste hin.
+
+## Code direkt in die Datei schreiben
+Die Person kann Vorschläge per Knopf in ihre Datei übernehmen. Nutze das NUR, wenn sie ausdrücklich darum bittet (Lösung zeigen, „schreib das rein“, „mach das mal“, „korrigier das“) oder wenn sie nach mehreren Versuchen festhängt und das will. Nie ungefragt bei [ÄNDERUNG].
+Formate (Zeilennummern = aktueller Stand, wie du ihn kennst; ganze Zeilen mit richtiger Einrückung, ohne Zeilennummern, ohne Markdown):
+
+${ERSETZE_START} Zeile 12-15
+...neue Zeilen, ersetzen die Zeilen 12 bis 15...
+${ERSETZE_ENDE}
+
+${EINFUEGEN_START} nach Zeile 20
+...neue Zeilen, werden nach Zeile 20 eingefügt (nach Zeile 0 = ganz am Anfang)...
+${EINFUEGEN_ENDE}
+
+- Bezieht sich der Vorschlag auf eine andere als die zuletzt gezeigte Datei, schreib den Dateinamen dazu: „${ERSETZE_START} Summe.java Zeile 5“.
+- Halte Vorschläge klein (nur die nötigen Zeilen) und erkläre in 1–3 Sätzen, WARUM das so funktioniert. Der Lerneffekt ist das Ziel.
+- Normale Markdown-Codeblöcke kann die Person auch per Knopf an ihrer Cursor-Position einfügen. Für Beispiele, die nicht direkt in ihren Code gehören, nimm die.`;
 }
 
 export const UEBUNG_START = "<<<UEBUNG";
@@ -86,4 +102,78 @@ export function aenderungsNachricht(p: {
   if (p.meldungen.length) teile.push("Compiler-/Editor-Meldungen:\n" + p.meldungen.join("\n"));
   teile.push(p.ganzeDatei ? "Ganze Datei:\n" + p.inhalt : "Diff seit dem letzten Mal:\n" + p.inhalt);
   return teile.join("\n\n");
+}
+
+export const ERSETZE_START = "<<<ERSETZE";
+export const ERSETZE_ENDE = "ERSETZE>>>";
+export const EINFUEGEN_START = "<<<EINFUEGEN";
+export const EINFUEGEN_ENDE = "EINFUEGEN>>>";
+
+export interface Vorschlag {
+  art: "ersetzen" | "einfuegen";
+  /** ersetzen: erste Zeile; einfuegen: neue Zeilen kommen NACH dieser Zeile (0 = Anfang) */
+  von: number;
+  /** ersetzen: letzte Zeile (inklusive); einfuegen: = von */
+  bis: number;
+  neu: string;
+  /** optionaler Dateiname aus dem Kopf */
+  datei?: string;
+  /** Zeilen, die Claude an der Stelle gesehen hat (füllt die Erweiterung aus ihrem Stand) */
+  alt?: string[];
+}
+
+/**
+ * Zieht Ersetzen-/Einfügen-Blöcke aus der Antwort. Im Text bleibt an ihrer Stelle ein
+ * Platzhalter-Codeblock ```vorschlag-N``` stehen, den das Chat-Fenster als Vorschlag mit Knopf zeigt.
+ */
+export function vorschlaegeAuslesen(antwort: string, start = 0): { rest: string; vorschlaege: Vorschlag[] } {
+  const vorschlaege: Vorschlag[] = [];
+  const re = /<<<(ERSETZE|EINFUEGEN)[ \t]+([^\n]*?)[ \t]*\n([\s\S]*?)\n?[ \t]*\1>>>/g;
+  const rest = antwort.replace(re, (m, art: string, kopf: string, code: string) => {
+    const z = /^(?:([\w.-]+\.\w+)\s+)?(?:nach\s+)?Zeilen?\s+(\d+)(?:\s*[-–]\s*(\d+))?$/i.exec(kopf.trim());
+    if (!z) return m;
+    const von = Number(z[2]);
+    const bis = art === "ERSETZE" ? Number(z[3] ?? z[2]) : von;
+    if (art === "ERSETZE" && (von < 1 || bis < von)) return m;
+    code = code.replace(/^\s*```[\w+#-]*\n/, "").replace(/\n```\s*$/, "");
+    vorschlaege.push({ art: art === "ERSETZE" ? "ersetzen" : "einfuegen", von, bis, neu: code.replace(/\s+$/, ""), datei: z[1] });
+    return "\n```vorschlag-" + (start + vorschlaege.length - 1) + "\n```\n";
+  });
+  return { rest: rest.replace(/\n{3,}/g, "\n\n").trim(), vorschlaege };
+}
+
+/** Findet die Stelle für einen Vorschlag im aktuellen Text. Ergebnis: Zeilenbereich [start, ende) 0-basiert. */
+export function stelleFinden(zeilen: string[], v: Vorschlag): { start: number; ende: number } | null {
+  const gleich = (a: string, b: string) => a.trimEnd() === b.trimEnd();
+  const passtBei = (pos: number, alt: string[]) =>
+    pos >= 0 && pos + alt.length <= zeilen.length && alt.every((l, k) => gleich(zeilen[pos + k], l));
+  const suchen = (alt: string[], erwartet: number): number | null => {
+    if (passtBei(erwartet, alt)) return erwartet;
+    const treffer: number[] = [];
+    for (let p = 0; p + alt.length <= zeilen.length; p++) if (passtBei(p, alt)) treffer.push(p);
+    return treffer.length === 1 ? treffer[0] : null;
+  };
+
+  if (v.art === "einfuegen") {
+    if (v.von === 0) return { start: 0, ende: 0 };
+    if (!v.alt?.length) return v.von <= zeilen.length ? { start: v.von, ende: v.von } : null;
+    // Anker = die Zeile, nach der eingefügt wird (leere Zeilen sind als Anker zu ungenau -> etwas Kontext davor)
+    const pos = suchen(v.alt, v.von - v.alt.length);
+    return pos === null ? null : { start: pos + v.alt.length, ende: pos + v.alt.length };
+  }
+  if (!v.alt?.length) return v.bis <= zeilen.length ? { start: v.von - 1, ende: v.bis } : null;
+  const pos = suchen(v.alt, v.von - 1);
+  return pos === null ? null : { start: pos, ende: pos + v.alt.length };
+}
+
+/** Holt aus dem Stand, den Claude gesehen hat, die Zeilen, auf die sich der Vorschlag bezieht. */
+export function altZeilen(gesehen: string, v: Vorschlag): string[] | undefined {
+  const z = gesehen.split(/\r?\n/);
+  if (v.art === "ersetzen") {
+    if (v.bis > z.length) return undefined;
+    return z.slice(v.von - 1, v.bis);
+  }
+  if (v.von === 0 || v.von > z.length) return undefined;
+  // Anker: bis zu 3 Zeilen bis einschließlich der Zeile, nach der eingefügt wird
+  return z.slice(Math.max(0, v.von - 3), v.von);
 }

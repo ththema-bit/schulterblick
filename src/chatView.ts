@@ -144,7 +144,7 @@ export class ChatView implements vscode.WebviewViewProvider {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  /* Lyx-UI (siehe LyxUI/lyx-ui.css im Repo): Flieder + Türkis, kantig, Barlow Condensed + IBM Plex Mono */
+  /* Lyx-UI-Look: Flieder + Türkis, kantig, Barlow Condensed + IBM Plex Mono */
   @font-face { font-family: "Barlow C"; src: url(${fonts}/BarlowCondensed-700-latin.woff2) format("woff2"); font-weight: 700; }
   @font-face { font-family: "Barlow C"; src: url(${fonts}/BarlowCondensed-500-latin.woff2) format("woff2"); font-weight: 500; }
   @font-face { font-family: "Plex Mono"; src: url(${fonts}/IBMPlexMono-400-latin.woff2) format("woff2"); font-weight: 400; }

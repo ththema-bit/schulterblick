@@ -1,4 +1,6 @@
-# Schulterblick 🦉
+<p align="center"><img src="media/icon.png" width="96" alt="Eule"></p>
+
+# Schulterblick
 
 VS-Code-Erweiterung: Claude schaut dir als Mentor „Eule“ beim Programmieren lernen über die Schulter (Java, C, C++).
 Die Eule verrät keine fertigen Lösungen. Sie zeigt auf die Stelle, stellt eine Leitfrage oder nennt das Konzept.
@@ -21,15 +23,23 @@ Die Eule verrät keine fertigen Lösungen. Sie zeigt auf die Stelle, stellt eine
 
 ## Installieren
 
+Voraussetzung zum Bauen: Node.js 18 oder neuer.
+
 ```bash
-cd Schulterblick
 npm install
+```
+
+```bash
 npm run package
+```
+
+```bash
 code --install-extension schulterblick-0.1.0.vsix
 ```
 
 Oder in VS Code: Erweiterungen → `…` → „Aus VSIX installieren…“.
-Zum Entwickeln: Ordner `Schulterblick` in VS Code öffnen, `npm run watch`, dann F5.
+
+Zum Entwickeln: Ordner in VS Code öffnen und F5 drücken („Schulterblick starten“). Es öffnet sich ein zweites VS-Code-Fenster mit der Erweiterung. Mit `npm run watch` wird bei jeder Änderung neu kompiliert.
 
 ## Einstellungen (`schulterblick.*`)
 
@@ -48,22 +58,21 @@ Befehle (Strg+Shift+P → „Schulterblick“): Neue Übung, Jetzt drüberschaue
 
 ## Testen
 
-```bash
-npm test
-```
-
-```bash
-SCHULTERBLICK_LIVE=1 node dist/test.js
-```
-
-Der zweite Befehl fragt die echte Claude-CLI: Off-by-one-Fehler finden, Kontext merken, Übung erzeugen.
+| Befehl | Was es prüft |
+|---|---|
+| `npm test` | Diff, Übungs- und Vorschlags-Parser, Stellensuche (ohne VS Code, ohne Claude) |
+| `npm run test:live` | fragt die echte Claude-CLI: Fehler finden, Kontext merken, Korrektur vorschlagen, Übung erzeugen (kostet ein paar Anfragen) |
+| `npm run test:vscode` | lädt ein echtes VS Code herunter und testet darin den ganzen Ablauf mit einer Ersatz-CLI (`test/vscode/fake-claude.js`). Unter Linux ohne Bildschirm: `xvfb-run -a npm run test:vscode` |
 
 ## Aufbau
 
 - `src/extension.ts`: Änderungen sammeln, Pause-Timer, Diff bauen, Übungen anlegen, Befehle
 - `src/mentor.ts`: Aufruf der Claude-CLI, eine durchgehende Sitzung, Warteschlange
 - `src/diff.ts`: kleiner Zeilen-Diff ohne Abhängigkeiten
-- `src/prompts.ts`: System-Prompt der Eule, Nachrichtenformat, Übungs-Parser
-- `src/chatView.ts`: Chat-Fenster mit Eule (Webview)
+- `src/prompts.ts`: System-Prompt der Eule, Nachrichtenformat, Parser für Übungen und Änderungsvorschläge
+- `src/chatView.ts`: Chat-Fenster mit Eule (Webview, Lyx-UI-Look)
+- `src/test.ts`: Selbsttest ohne VS Code
+- `test/vscode/`: Integrationstest in echtem VS Code
+- `media/`: Icons und Schriften (Barlow Condensed, IBM Plex Mono, beide SIL Open Font License)
 
 Die Mentor-Sitzungen laufen im Speicherordner der Erweiterung. Sie tauchen also nicht zwischen deinen normalen Claude-Code-Sitzungen im Projekt auf.

@@ -1,5 +1,8 @@
 src/**
+test/**
 node_modules/**
+.vscode/**
+.vscode-test/**
 **/*.map
 dist/test.js
 tsconfig.json
